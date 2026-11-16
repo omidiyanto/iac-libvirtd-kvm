@@ -1,0 +1,34 @@
+#cloud-config
+hostname: ${hostname}
+# Root di LVM: perbesar partisi -> PV -> LV root. Jalan tiap boot, idempotent, dilewati kalau root bukan LVM
+# ponytail: anggap 1 PV (layout bawaan image); kalau nanti VG root punya banyak PV, sesuaikan
+bootcmd:
+  - |
+    ROOT=$(findmnt -no SOURCE /)
+    if lvs "$ROOT" >/dev/null 2>&1; then
+      PV=$(pvs --noheadings -o pv_name | head -n1 | tr -d ' ')
+      growpart "/dev/$(lsblk -no pkname "$PV")" "$(cat /sys/class/block/$(basename "$PV")/partition)" || true
+      pvresize "$PV" || true
+      lvextend -r -l +100%FREE "$ROOT" || true
+    fi
+users:
+  - name: ${user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: ${password == null}
+    ssh_authorized_keys: ${jsonencode(ssh_keys)}
+%{ if password != null ~}
+chpasswd:
+  expire: false
+  users:
+    - name: ${user}
+      password: ${jsonencode(password)}
+      type: text
+ssh_pwauth: true
+%{ endif ~}
+%{ if length(mounts) > 0 ~}
+fs_setup: ${jsonencode([for m in mounts : { device = m.device, filesystem = "ext4", partition = "none" }])}
+mounts: ${jsonencode([for m in mounts : [m.device, m.path, "ext4", "defaults,nofail", "0", "2"]])}
+%{ endif ~}
+packages: ${jsonencode(concat(["qemu-guest-agent"], packages))}
+runcmd: ${jsonencode(concat(["systemctl start qemu-guest-agent"], runcmd))}

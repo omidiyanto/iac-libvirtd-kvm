@@ -1,0 +1,47 @@
+# Network libvirt yang dibuat tofu (opsional). Network "default" (NAT 192.168.122.0/24) sudah ada di host.
+networks = {
+  # Jaringan internal antar-VM, tanpa internet. Host = 10.10.10.1, DHCP .100-.199
+  lab = { mode = "isolated", cidr = "10.10.10.0/24" }
+
+  # Routed tanpa NAT: VM bisa diakses dari LAN kalau router diberi static route
+  # 10.20.0.0/24 via <IP host>. Cocok sebagai pengganti bridge kalau host pakai WiFi.
+  # routed = { mode = "route", cidr = "10.20.0.0/24" }
+
+  # Bridge ke LAN lewat bridge host yang sudah ada (butuh NIC ethernet, tidak bisa WiFi)
+  # lan = { mode = "bridge", bridge = "br0" }
+}
+
+vms = {
+  # Minimal: 2 vCPU, 2 GiB RAM, disk 20 GiB, 1 NIC ke "default" via DHCP
+  web1 = {
+    password = "ganti-saya"
+  }
+
+  # 2 NIC + 2 disk data
+  db1 = {
+    vcpu      = 4
+    memory_mb = 4096
+    disk_gb   = 40
+    nics = [
+      { ip = "192.168.122.200/24", gateway = "192.168.122.1" }, # NIC 1: static di NAT default
+      { name = "lab", ip = "10.10.10.10/24" },                  # NIC 2: static di network lab, tanpa gateway
+    ]
+    disks = [
+      { size_gb = 50, mount = "/var/lib/postgresql" }, # vdb, diformat ext4 & di-mount otomatis
+      { size_gb = 10 },                                # vdc, disk mentah
+    ]
+    ssh_public_keys = ["ssh-ed25519 AAAA... user@host"]
+    packages        = ["postgresql"]
+  }
+
+  # NIC langsung ke bridge host (tanpa networks{}), IP dari DHCP router LAN
+  # app1 = {
+  #   nics     = [{ type = "bridge", name = "br0" }]
+  #   password = "ganti-saya"
+  # }
+
+  # cloud-init sendiri dari file (qemu-guest-agent & mount disk tidak otomatis lagi)
+  # custom1 = {
+  #   user_data_file = "cloud-init/custom1.yaml"
+  # }
+}
